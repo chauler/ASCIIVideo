@@ -2,7 +2,6 @@ import copy
 import win32gui
 import win32ui
 import win32con
-import time
 import cv2 as cv
 import numpy as np
 from threading import Thread, Lock
@@ -67,16 +66,7 @@ class WindowCapture:
         return cv.cvtColor(img, cv.COLOR_BGRA2GRAY)
 
     def __doWork(self):
-        loop_time = 0
         while True:
-            try:
-                fps = 1 / (time.time() - loop_time)
-            except:
-                pass
-            #if fps > 60:
-            #    continue
-            #print(f'Raw FPS {fps}', flush=True)
-            loop_time = time.time()
             try:
                 window_rect = win32gui.GetWindowRect(self.hwnd)
                 self.w = window_rect[2] - window_rect[0]
