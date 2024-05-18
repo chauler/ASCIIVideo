@@ -1,3 +1,5 @@
+import math
+import numpy as np
 import win32gui
 import cv2 as cv
 import sys
@@ -6,6 +8,9 @@ import ctypes
 import argparse
 from WindowCapture import WindowCapture
 from CameraCapture import CameraCapture
+from threading import Thread
+from concurrent.futures.thread import ThreadPoolExecutor
+import concurrent.futures
 
 sys.stdout = open( 1, "w", buffering = 999999 )
 os.system("")
@@ -64,6 +69,30 @@ def Parse_Args() -> argparse.Namespace:
         sys.exit()
     return args
 
+def Convert_Screen(imageContainer):
+    num_threads = 8
+    while True:
+        futures: list[concurrent.futures.Future] = []
+        new_image = []
+        with ThreadPoolExecutor(max_workers=num_threads) as executor:
+            for i in range(num_threads):
+                futures.append(executor.submit(convert_to_ascii, imageContainer.output_img[math.floor(imageContainer.output_img.shape[0] / num_threads * i):math.floor(imageContainer.output_img.shape[0] / num_threads * (i+1))]))
+            concurrent.futures.wait(futures)
+            for r in futures:
+                new_image.extend(r.result())
+        imageContainer.ascii_img = new_image
+class ImageContainer:
+    def __init__(self):
+        self.input_img = np.array(np.zeros((100,100,1), dtype=np.uint8))
+        self.ascii_img = [''*100]*100
+        self.output_img = np.array(np.zeros((100,100,1), dtype=np.uint8))
+
+    def GetLatestImage(self):
+        return self.input_img
+    def GetLatestASCIIImage(self):
+        return self.ascii_img
+
+
 if __name__ == '__main__':
     charsets = {
         8: " .-+o$#8",
@@ -81,14 +110,18 @@ if __name__ == '__main__':
     win32gui.EnumWindows(winEnumHandler, None)
 
     videoFeed = CameraCapture() if args.input == "camera" else WindowCapture([x for x in names if args.window in x and 'cmd' not in x][0])
-
+    imageContainer = ImageContainer()
+    imageContainer.input_img = videoFeed.GetLatestImage() # type: ignore
+    conversion_thread = Thread(target=Convert_Screen, args=([imageContainer]))
+    conversion_thread.daemon = True
+    conversion_thread.start()
     while True:
-        img = videoFeed.GetLatestImage()
-        if img is None:
+        imageContainer.input_img = videoFeed.GetLatestImage() # type: ignore
+        if imageContainer.input_img is None:
             continue
         cols, rows = os.get_terminal_size()
-        img = cv.resize(img, (cols, rows-2))
-        converted = convert_to_ascii(img)
-        print_array(converted)
+        imageContainer.output_img = cv.resize(imageContainer.input_img, (cols, rows-2)) # type: ignore
+        #converted = convert_to_ascii(img)
+        print_array(imageContainer.ascii_img)
         if cv.waitKey(1) == ord('q'):
             break
